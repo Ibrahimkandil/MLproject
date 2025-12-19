@@ -7,10 +7,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly
 import plotly.graph_objs as go
+
 from core.trainer import train_and_predict
 from datetime import datetime
 import pandas as pd
-from config import RAW_DATA_PATH, CLEAN_DATA_PATH, MODELS_EXCEL
+from config import RAW_DATA_PATH, CLEAN_DATA_PATH, MODELS_EXCEL,DATA_HTML_DASHBOARD
 from core.preprocessing import clean_dataset
 from core.preprocessing import encoders, scaler, numeric_cols
 from core.model_registry import MEMBER_TARGET_MODELS
@@ -71,39 +72,35 @@ REVERSE_MAP = build_reverse_mapping(raw_df, df, categorical_cols)
 def home():
     facts = raw_df.sample(5).to_dict(orient="records")
     return render_template("home.html", facts=facts)
-def generate_eda_html(df):
-    html = '<div class="row">'
-    for col in df.columns:
-        html += '<div class="col-md-6 mb-4"><div class="card"><div class="card-body">'
-        html += f'<h5 class="card-title">{col}</h5>'
+import json
+import plotly
 
-        if pd.api.types.is_numeric_dtype(df[col]):
-            desc = df[col].describe().to_frame().round(2)
-            html += desc.to_html(classes="table table-sm table-striped")
+# def generate_eda_html(df):
+#     try:
+#         profile = ProfileReport(df, title="🌾 Climate Data Profiling", explorative=True)
+#         html_str = profile.to_html()  # generates HTML as a string
+#         with open(DATA_HTML_DASHBOARD, "w", encoding="utf-8") as f:
+#             f.write(html_str)
+#         print(f"EDA report generated at {DATA_HTML_DASHBOARD}")
+#     except Exception as e:
+#         print(f"Error EDA report generating because of {e}")
+#
+#
+# generate_eda_html(raw_df)
 
-            plt.figure()
-            sns.histplot(df[col].dropna(), kde=True)
-        else:
-            counts = df[col].value_counts()
-            html += counts.to_frame().to_html(classes="table table-sm table-striped")
-
-            plt.figure()
-            counts.plot(kind="bar")
-
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight")
-        plt.close()
-
-        img_base64 = base64.b64encode(buf.getvalue()).decode()
-        html += f'<img src="data:image/png;base64,{img_base64}" class="img-fluid mt-2"/>'
-
-        html += '</div></div></div>'
-    html += '</div>'
-    return html
 @app.route("/visualize")
 def visualize():
-    profile_html = generate_eda_html(raw_df)
+    # 1. Generate the heavy profiling report
 
+    # 1️⃣ Read the pre-generated Profiling HTML
+    try:
+        with open(DATA_HTML_DASHBOARD, "r", encoding="utf-8") as f:
+            profile_html = f.read()
+    except Exception as e:
+        profile_html = f"<p>Error loading EDA report: {e}</p>"
+
+
+    # 2. Prepare Plotly Charts
     crop_counts = df["Crop_Type"].value_counts()
     crop_chart = go.Figure([go.Bar(x=crop_counts.index, y=crop_counts.values)])
 
@@ -111,12 +108,62 @@ def visualize():
         go.Scatter(x=df["Year"], y=df["Economic_Impact_Million_USD"], mode="lines+markers")
     ])
 
+    # Convert Plotly figures to JSON strings
+    crop_json = json.dumps(crop_chart, cls=plotly.utils.PlotlyJSONEncoder)
+    impact_json = json.dumps(impact_chart, cls=plotly.utils.PlotlyJSONEncoder)
+
     return render_template(
         "visualize.html",
         profile_html=profile_html,
-        crop_chart=json.dumps(crop_chart, cls=plotly.utils.PlotlyJSONEncoder),
-        impact_chart=json.dumps(impact_chart, cls=plotly.utils.PlotlyJSONEncoder)
+        crop_chart=crop_json,
+        impact_chart=impact_json
     )
+# def generate_eda_html(df):
+#     html = '<div class="row">'
+#     for col in df.columns:
+#         html += '<div class="col-md-6 mb-4"><div class="card"><div class="card-body">'
+#         html += f'<h5 class="card-title">{col}</h5>'
+#
+#         if pd.api.types.is_numeric_dtype(df[col]):
+#             desc = df[col].describe().to_frame().round(2)
+#             html += desc.to_html(classes="table table-sm table-striped")
+#
+#             plt.figure()
+#             sns.histplot(df[col].dropna(), kde=True)
+#         else:
+#             counts = df[col].value_counts()
+#             html += counts.to_frame().to_html(classes="table table-sm table-striped")
+#
+#             plt.figure()
+#             counts.plot(kind="bar")
+#
+#         buf = io.BytesIO()
+#         plt.savefig(buf, format="png", bbox_inches="tight")
+#         plt.close()
+#
+#         img_base64 = base64.b64encode(buf.getvalue()).decode()
+#         html += f'<img src="data:image/png;base64,{img_base64}" class="img-fluid mt-2"/>'
+#
+#         html += '</div></div></div>'
+#     html += '</div>'
+#     return html
+# @app.route("/visualize")
+# def visualize():
+#     profile_html = generate_eda_html(raw_df)
+#
+#     crop_counts = df["Crop_Type"].value_counts()
+#     crop_chart = go.Figure([go.Bar(x=crop_counts.index, y=crop_counts.values)])
+#
+#     impact_chart = go.Figure([
+#         go.Scatter(x=df["Year"], y=df["Economic_Impact_Million_USD"], mode="lines+markers")
+#     ])
+#
+#     return render_template(
+#         "visualize.html",
+#         profile_html=profile_html,
+#         crop_chart=json.dumps(crop_chart, cls=plotly.utils.PlotlyJSONEncoder),
+#         impact_chart=json.dumps(impact_chart, cls=plotly.utils.PlotlyJSONEncoder)
+#     )
 def prepare_numeric_input(raw_df, cleaned_df, form, target):
     input_data = {}
 
