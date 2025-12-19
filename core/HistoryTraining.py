@@ -6,12 +6,12 @@ def CopyAtrainingHistoryFrom(model_name, model_obj, member, target, score, predi
     from datetime import datetime
     training_history = {
         "ModelName": model_name,
-        "Model": str(model_obj),  # string representation
+        "ModelObj": model_obj,      # Store the ACTUAL object here (don't use str())
         "Member": member,
         "Target": target,
         "Score": score,
-        "Prediction": prediction,
-        "LearningType": learning_type,
+        "Prediction": prediction,   # This is your original training prediction
+        "LearningType": learning_type.lower(),
         "CreatedTime": datetime.now()
     }
     History.append(training_history)

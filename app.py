@@ -12,6 +12,7 @@ from datetime import datetime
 import pandas as pd
 from config import RAW_DATA_PATH, CLEAN_DATA_PATH, MODELS_EXCEL
 from core.preprocessing import clean_dataset
+from core.preprocessing import encoders, scaler, numeric_cols
 from core.model_registry import MEMBER_TARGET_MODELS
 from core.HistoryTraining import initialize,GetHistory
 from flask import request, jsonify
@@ -42,11 +43,14 @@ mean_row = pd.DataFrame({col: [df[col].mean()] for col in numeric_cols})
 mode_row = pd.DataFrame({col: [df[col].mode()[0]] for col in categorical_cols if col in df.columns})
 input_row_full = pd.concat([mean_row, mode_row], axis=1)
 df = clean_dataset(RAW_DATA_PATH, CLEAN_DATA_PATH)  # your existing function
-COUNTRY_COORDS = {
-    "Tunisia":[33.8869,9.5375], "France":[46.2276,2.2137], "USA":[37.0902,-95.7129],
-    "Brazil":[-14.2350,-51.9253], "India":[20.5937,78.9629], "Germany":[51.1657,10.4515],
-    "Italy":[41.8719,12.5674], "Spain":[40.4637,-3.7492], "Canada":[56.1304,-106.3468],
-    "China":[35.8617,104.1954]
+# COUNTRY_COORDS = {
+#     "Tunisia":[33.8869,9.5375], "France":[46.2276,2.2137], "USA":[37.0902,-95.7129],
+#     "Brazil":[-14.2350,-51.9253], "India":[20.5937,78.9629], "Germany":[51.1657,10.4515],
+#     "Italy":[41.8719,12.5674], "Spain":[40.4637,-3.7492], "Canada":[56.1304,-106.3468],
+#     "China":[35.8617,104.1954]
+# }
+COUNTRY_COORDS = {"Tunisia":[33.8869,9.5375],"Canada":[56.1304,-106.3468],
+    "Brazil":[-14.2350,-51.9253], "India":[20.5937,78.9629]
 }
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 input_row_full = pd.DataFrame({col: [df[col].mean()] for col in numeric_cols})
@@ -318,54 +322,132 @@ def predict():
         columns=raw_df.columns,
         result=result
     )
-
 @app.route("/dashboard")
 def dashboard():
-    history = GetHistory()  # your function
+    history = GetHistory()
+    sample_df = cleaned_df.head(10)  # Your 10 lines of cleaned data
 
     processed_groups = {}
 
     for h in history:
         display_key = f"{h['Target']} ({h['Member']})"
-        model_name = h["ModelName"]
-        score = h.get("Score", 0)
         is_cls = h.get("LearningType", "").lower() == "classification"
 
-        # Fix missing fields
-        if "ScoreHistory" not in h or not h["ScoreHistory"]:
-            h["ScoreHistory"] = [score]  # default to current score if empty
-        if "ConfusionMatrix" not in h or not h["ConfusionMatrix"]:
-            h["ConfusionMatrix"] = {"labels": ["None"], "values": [0]}
+        # --- Run Prediction on 10 rows ---
+        model = h.get("ModelObj")
+        analysis_data = {}
 
+        if model and hasattr(model, 'predict'):
+            features = sample_df.drop(columns=[h['Target']], errors='ignore')
+            preds = model.predict(features)
+            actuals = sample_df[h['Target']].tolist() if h['Target'] in sample_df else []
+
+            if is_cls:
+                # Basic Confusion Mapping for first 10 rows
+                analysis_data = {
+                    "labels": ["Correct", "Incorrect"],
+                    "values": [sum(1 for p, a in zip(preds, actuals) if str(p) == str(a)),
+                               sum(1 for p, a in zip(preds, actuals) if str(p) != str(a))]
+                }
+            else:
+                analysis_data = {
+                    "labels": [f"Idx {i}" for i in range(len(preds))],
+                    "actual": [round(float(a), 3) for a in actuals],
+                    "predicted": [round(float(p), 3) for p in preds]
+                }
+
+        h["AnalysisData"] = analysis_data
+
+        # --- Grouping ---
         if display_key not in processed_groups:
             processed_groups[display_key] = {}
 
-        # Keep best run per model
+        model_name = h["ModelName"]
         if model_name not in processed_groups[display_key]:
             processed_groups[display_key][model_name] = h
         else:
-            existing_score = processed_groups[display_key][model_name].get("Score", 0)
-            if is_cls:
-                if score > existing_score:
-                    processed_groups[display_key][model_name] = h
-            else:
-                if score < existing_score:
-                    processed_groups[display_key][model_name] = h
+            existing_score = processed_groups[display_key][model_name]["Score"]
+            if (is_cls and h["Score"] > existing_score) or (not is_cls and h["Score"] < existing_score):
+                processed_groups[display_key][model_name] = h
 
-    # Sort models
+    # Sorting
     final_data = {}
-    for display_key, models_dict in processed_groups.items():
-        model_list = list(models_dict.values())
-        is_cls = model_list[0].get("LearningType", "").lower() == "classification"
-        model_list.sort(key=lambda x: (x['Score'], x['CreatedTime']), reverse=is_cls)
-        final_data[display_key] = model_list
+    for key, m_dict in processed_groups.items():
+        m_list = list(m_dict.values())
+        final_data[key] = sorted(m_list, key=lambda x: x['Score'], reverse=(m_list[0]['LearningType']=='classification'))
 
     return render_template("dashboard.html", grouped=final_data)
+
+#@app.route("/dashboard")
+# def dashboard():
+#     history = GetHistory()
+#     # Take 10 lines for the live prediction comparison
+#     sample_df = cleaned_df.head(10)
+#
+#     processed_groups = {}
+#
+#     for h in history:
+#         display_key = f"{h['Target']} ({h['Member']})"
+#         model_name = h["ModelName"]
+#         is_cls = h.get("LearningType", "").lower() == "classification"
+#
+#         # --- PREDICTION LOGIC ---
+#         model_obj = h.get("ModelObj")
+#         analysis_data = {}
+#
+#         if model_obj and hasattr(model_obj, 'predict'):
+#             try:
+#                 # Prepare features (drop target if it exists in sample)
+#                 features = sample_df.drop(columns=[h['Target']], errors='ignore')
+#                 live_preds = model_obj.predict(features)
+#                 actuals = sample_df[h['Target']].tolist() if h['Target'] in sample_df else []
+#
+#                 if is_cls:
+#                     # Logic for Confusion Matrix (simplified for chart)
+#                     # We show count of correct vs incorrect for these 10 lines
+#                     correct = sum(1 for p, a in zip(live_preds, actuals) if str(p) == str(a))
+#                     analysis_data = {
+#                         "labels": ["Correct", "Incorrect"],
+#                         "values": [correct, len(live_preds) - correct]
+#                     }
+#                 else:
+#                     # Logic for Regression Curve (Actual vs Predicted)
+#                     analysis_data = {
+#                         "labels": [f"Pt {i+1}" for i in range(len(live_preds))],
+#                         "actual": actuals,
+#                         "predicted": [round(float(p), 4) for p in live_preds]
+#                     }
+#             except Exception as e:
+#                 print(f"Prediction error: {e}")
+#                 analysis_data = {"error": "Could not run prediction"}
+#
+#         h["AnalysisData"] = analysis_data
+#
+#         # --- GROUPING & BEST MODEL FILTERING ---
+#         if display_key not in processed_groups:
+#             processed_groups[display_key] = {}
+#
+#         if model_name not in processed_groups[display_key]:
+#             processed_groups[display_key][model_name] = h
+#         else:
+#             existing_score = processed_groups[display_key][model_name].get("Score", 0)
+#             if (is_cls and h["Score"] > existing_score) or (not is_cls and h["Score"] < existing_score):
+#                 processed_groups[display_key][model_name] = h
+#
+#     # Finalize Data
+#     final_data = {}
+#     for key, models_dict in processed_groups.items():
+#         model_list = list(models_dict.values())
+#         is_cls = model_list[0].get("LearningType", "").lower() == "classification"
+#         model_list.sort(key=lambda x: x['Score'], reverse=is_cls)
+#         final_data[key] = model_list
+#
+#     return render_template("dashboard.html", grouped=final_data)
 
 
 # @app.route("/dashboard")
 # def dashboard():
-#     history = GetHistory()
+#     history = GetHistory()  # your function
 #
 #     processed_groups = {}
 #
@@ -375,10 +457,16 @@ def dashboard():
 #         score = h.get("Score", 0)
 #         is_cls = h.get("LearningType", "").lower() == "classification"
 #
+#         # Fix missing fields
+#         if "ScoreHistory" not in h or not h["ScoreHistory"]:
+#             h["ScoreHistory"] = [score]  # default to current score if empty
+#         if "ConfusionMatrix" not in h or not h["ConfusionMatrix"]:
+#             h["ConfusionMatrix"] = {"labels": ["None"], "values": [0]}
+#
 #         if display_key not in processed_groups:
 #             processed_groups[display_key] = {}
 #
-#         # Keep only best run per model
+#         # Keep best run per model
 #         if model_name not in processed_groups[display_key]:
 #             processed_groups[display_key][model_name] = h
 #         else:
@@ -390,7 +478,7 @@ def dashboard():
 #                 if score < existing_score:
 #                     processed_groups[display_key][model_name] = h
 #
-#     # Sort models for each group
+#     # Sort models
 #     final_data = {}
 #     for display_key, models_dict in processed_groups.items():
 #         model_list = list(models_dict.values())
@@ -399,185 +487,306 @@ def dashboard():
 #         final_data[display_key] = model_list
 #
 #     return render_template("dashboard.html", grouped=final_data)
-def predict_target(target, task, country_name):
-    if task == "classification":
-        categories = ["Corn","Wheat","Rice","Soybean","Sugarcane"]
-        return np.random.choice(categories)
-    else:
-        return round(np.random.uniform(50, 500), 2)
+
+from core.preprocessing import encoders, scaler, numeric_cols
+
+import pandas as pd
+from flask import render_template
+from core.preprocessing import encoders, scaler, numeric_cols
+
 @app.route("/map")
 def map_route():
     mass_predictions = []
 
+    # Load raw data for reference
     raw_df = pd.read_csv(RAW_DATA_PATH)
-    cleaned_df = df.copy()
+    training_data = df.copy()  # your cleaned training data
 
     for country_name, coords in COUNTRY_COORDS.items():
-        input_row_template = cleaned_df.sample(1).copy()
-        for col in input_row_template.columns:
-            if col == 'Country':
-                if country_name not in raw_df['Country'].values:
-                    # Assign a new integer ID to the new country
-                    new_country_id = cleaned_df['Country'].max() + 1  # or len(cleaned_df['Country'].values)
-                    input_row_template[col] = new_country_id
+        # --- 1. BUILD INPUT ROW ---
+        row_dict = {}
 
-                    # Update REVERSE_MAP for this new country
-                    if 'Country' not in REVERSE_MAP:
-                        REVERSE_MAP['Country'] = {}
-                    REVERSE_MAP['Country'][new_country_id] = country_name
+        # If country exists in raw data, take its latest row
+        if country_name in raw_df['Country'].values:
+            country_row = raw_df[raw_df['Country'] == country_name].iloc[-1]
+            for col in numeric_cols:
+                row_dict[col] = country_row[col]
+            for col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
+                row_dict[col] = country_row[col]
+            row_dict['Year'] = country_row['Year'] if 'Year' in country_row else 2024
+        else:
+            # Unseen country: fallback to global mean/mode
+            row_dict['Year'] = raw_df['Year'].max() if 'Year' in raw_df else 2024
+            for col in numeric_cols:
+                row_dict[col] = raw_df[col].mean()
+            for col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
+                row_dict[col] = raw_df[col].mode()[0]
+
+        row_dict['Country'] = country_name
+
+        # Convert to DataFrame
+        input_row_raw = pd.DataFrame([row_dict])
+        input_row_transformed = input_row_raw.copy()
+
+        # --- 2. APPLY TRANSFORMATIONS ---
+        # Encode categorical features
+        for col, le in encoders.items():
+            if col in input_row_transformed.columns:
+                val = str(input_row_transformed[col].iloc[0])
+                if val in le.classes_:
+                    input_row_transformed[col] = le.transform([val])[0]
                 else:
-                    row_index = raw_df[raw_df['Country'] == country_name].index[0]
-                    input_row_template[col] = cleaned_df.loc[row_index, col]
+                    input_row_transformed[col] = len(le.classes_)  # unseen categories
 
-            elif col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
-                # Fill with most frequent value
-                input_row_template[col] = cleaned_df[col].mode()[0]
+        # Scale numeric columns
+        cols_to_scale = [c for c in numeric_cols if c in input_row_transformed.columns]
+        if cols_to_scale:
+            input_row_transformed[cols_to_scale] = scaler.transform(input_row_transformed[cols_to_scale])
 
-            else:
-                # Numeric columns: fill with mean
-                if pd.api.types.is_numeric_dtype(cleaned_df[col]):
-                    input_row_template[col] = cleaned_df[col].mean()
+        # Reorder columns to match training data
+        input_row_transformed = input_row_transformed[[col for col in training_data.columns if col in input_row_transformed.columns]]
 
-        # for cols in input_row_template.columns :
-        #     if cols =='Country' :
-        #         if country_name not in raw_df['Country'].values:
-        #             input_row_template[cols] = cleaned_df['Country'].values[len(cleaned_df['Country'].values)-1]+1
-        #             REVERSE_MAP[cols][input_row_template[cols]] = country_name
-        #         else :
-        #             row_index = raw_df[raw_df['Country'] == country_name].index[0]
-        #             input_row_template[cols] = cleaned_df.loc[row_index, cols]
-        #     elif cols in ['Region', 'Crop_Type', 'Adaptation_Strategies'] :
-        #         input_row_template[cols] = cleaned_df[cols].mode()[0]
-        #     else :
-        #         input_row_template[cols] = cleaned_df[cols].mean()
+        # --- 3. MAKE PREDICTIONS ---
+        prediction_entry = {"country": country_name, "lat": float(coords[0]), "lon": float(coords[1]), "results": {}}
 
-
-        prediction_entry = {
-            "country": country_name,
-            "lat": float(coords[0]),
-            "lon": float(coords[1]),
-            "results": {}
-        }
-
-
-        #here i want to change the values of that row with the mean plz
         for target, info in MEMBER_TARGET_MODELS.items():
             models = info.get("models", [])
-            memberName = info.get("member")
-
             if not models:
-                prediction_entry["results"][target] = "None"
+                prediction_entry["results"][target] = None
                 continue
 
             model_key = models[0]
-            input_row_model = input_row_template.drop(columns=[target], errors="ignore")
 
             try:
+                # Drop target from input features if present
+                input_row_model = input_row_transformed.drop(columns=[target], errors="ignore")
+                train_features = [col for col in training_data.columns if col != target]
+                input_row_model = input_row_model[train_features]
+
                 prediction, score, metric, _ = train_and_predict(
-                    df=df,
+                    df=training_data,
                     target=target,
                     model_key=model_key,
                     excel_path="AI_Models_List.xlsx",
                     input_row=input_row_model,
-                    memberName=memberName
+                    memberName=info.get("member")
                 )
+
                 print("Model Trained:"+model_key)
 
-
-            # 🔁 Decode prediction
-                if target in REVERSE_MAP:
-                    final_prediction = REVERSE_MAP[target].get(prediction, "Unknown")
+                # Decode prediction
+                pred_val = prediction[0] if hasattr(prediction, "__iter__") and not isinstance(prediction, str) else prediction
+                if target in encoders:
+                    final_prediction = encoders[target].inverse_transform([int(pred_val)])[0]
                 else:
-                    mean = raw_df[target].mean()
-                    std = raw_df[target].std()
-                    final_prediction = round(prediction * std + mean, 2)
+                    # Regression: inverse scale using raw mean/std
+                    t_mean = raw_df[target].mean() if target in raw_df else 0
+                    t_std = raw_df[target].std() if target in raw_df else 1
+                    final_prediction = round(float(pred_val) * t_std + t_mean, 2)
 
             except Exception as e:
-                print(f"Failed to train {model_key} for {country_name}: {e}")
-                final_prediction = "None"
+                print(f"Prediction error for {target} in {country_name}: {e}")
+                final_prediction = "Error"
 
             prediction_entry["results"][target] = final_prediction
 
         mass_predictions.append(prediction_entry)
 
-    return render_template(
-        "map.html",
-        data=mass_predictions,
-        targets=list(MEMBER_TARGET_MODELS.keys())
-    )
+    return render_template("map.html", data=mass_predictions, targets=list(MEMBER_TARGET_MODELS.keys()))
+
+
+# @app.route("/map")
+# def map_route():
+#     mass_predictions = []
+#
+#     raw_df = pd.read_csv(RAW_DATA_PATH)
+#     cleaned_df = df.copy()
+#
+#     for country_name, coords in COUNTRY_COORDS.items():
+#         input_row_template = cleaned_df.sample(1).copy()
+#         for col in input_row_template.columns:
+#             if col == 'Country':
+#                 if country_name not in raw_df['Country'].values:
+#                     # Assign a new integer ID to the new country
+#                     new_country_id = cleaned_df['Country'].max() + 1  # or len(cleaned_df['Country'].values)
+#                     input_row_template[col] = new_country_id
+#
+#                     # Update REVERSE_MAP for this new country
+#                     if 'Country' not in REVERSE_MAP:
+#                         REVERSE_MAP['Country'] = {}
+#                     REVERSE_MAP['Country'][new_country_id] = country_name
+#                 else:
+#                     row_index = raw_df[raw_df['Country'] == country_name].index[0]
+#                     input_row_template[col] = cleaned_df.loc[row_index, col]
+#
+#             elif col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
+#                 # Fill with most frequent value
+#                 input_row_template[col] = cleaned_df[col].mode()[0]
+#
+#             else:
+#                 # Numeric columns: fill with mean
+#                 if pd.api.types.is_numeric_dtype(cleaned_df[col]):
+#                     input_row_template[col] = cleaned_df[col].mean()
+#
+#         # for cols in input_row_template.columns :
+#         #     if cols =='Country' :
+#         #         if country_name not in raw_df['Country'].values:
+#         #             input_row_template[cols] = cleaned_df['Country'].values[len(cleaned_df['Country'].values)-1]+1
+#         #             REVERSE_MAP[cols][input_row_template[cols]] = country_name
+#         #         else :
+#         #             row_index = raw_df[raw_df['Country'] == country_name].index[0]
+#         #             input_row_template[cols] = cleaned_df.loc[row_index, cols]
+#         #     elif cols in ['Region', 'Crop_Type', 'Adaptation_Strategies'] :
+#         #         input_row_template[cols] = cleaned_df[cols].mode()[0]
+#         #     else :
+#         #         input_row_template[cols] = cleaned_df[cols].mean()
+#
+#
+#         prediction_entry = {
+#             "country": country_name,
+#             "lat": float(coords[0]),
+#             "lon": float(coords[1]),
+#             "results": {}
+#         }
+#
+#
+#         #here i want to change the values of that row with the mean plz
+#         for target, info in MEMBER_TARGET_MODELS.items():
+#             models = info.get("models", [])
+#             memberName = info.get("member")
+#
+#             if not models:
+#                 prediction_entry["results"][target] = "None"
+#                 continue
+#
+#             model_key = models[0]
+#             input_row_model = input_row_template.drop(columns=[target], errors="ignore")
+#
+#             try:
+#                 prediction, score, metric, _ = train_and_predict(
+#                     df=df,
+#                     target=target,
+#                     model_key=model_key,
+#                     excel_path="AI_Models_List.xlsx",
+#                     input_row=input_row_model,
+#                     memberName=memberName
+#                 )
+#                 print("Model Trained:"+model_key)
+#
+#
+#             # 🔁 Decode prediction
+#                 if target in REVERSE_MAP:
+#                     final_prediction = REVERSE_MAP[target].get(prediction, "Unknown")
+#                 else:
+#                     mean = raw_df[target].mean()
+#                     std = raw_df[target].std()
+#                     final_prediction = round(prediction * std + mean, 2)
+#
+#             except Exception as e:
+#                 print(f"Failed to train {model_key} for {country_name}: {e}")
+#                 final_prediction = "None"
+#
+#             prediction_entry["results"][target] = final_prediction
+#
+#         mass_predictions.append(prediction_entry)
+#
+#     return render_template(
+#         "map.html",
+#         data=mass_predictions,
+#         targets=list(MEMBER_TARGET_MODELS.keys())
+#     )
 @app.route("/predict_country")
 def predict_country():
-    raw_df = pd.read_csv(RAW_DATA_PATH)
-    cleaned_df = df.copy()
     country_name = request.args.get("country")
     if not country_name:
-        return jsonify({})
+        return jsonify({"error": "No country provided"}), 400
 
-    geolocator = Nominatim(user_agent="myapp")
-    loc = geolocator.geocode(country_name)
-    if not loc:
-        return jsonify({})
-    input_row_template = cleaned_df.sample(1).copy()
-    for col in input_row_template.columns:
-        if col == 'Country':
-            if country_name not in raw_df['Country'].values:
-                # Assign a new integer ID to the new country
-                new_country_id = cleaned_df['Country'].max() + 1  # or len(cleaned_df['Country'].values)
-                input_row_template[col] = new_country_id
+    # Geocode country
+    try:
+        geolocator = Nominatim(user_agent="myapp")
+        loc = geolocator.geocode(country_name)
+        if not loc:
+            return jsonify({"error": "Location not found"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Geocoding failed: {str(e)}"}), 500
 
-                # Update REVERSE_MAP for this new country
-                if 'Country' not in REVERSE_MAP:
-                    REVERSE_MAP['Country'] = {}
-                REVERSE_MAP['Country'][new_country_id] = country_name
-            else:
-                row_index = raw_df[raw_df['Country'] == country_name].index[0]
-                input_row_template[col] = cleaned_df.loc[row_index, col]
+    # Build input row (same logic as /map)
+    raw_df = pd.read_csv(RAW_DATA_PATH)
+    training_data = df.copy()
+    row_dict = {}
 
-        elif col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
-            # Fill with most frequent value
-            input_row_template[col] = cleaned_df[col].mode()[0]
+    if country_name in raw_df['Country'].values:
+        country_row = raw_df[raw_df['Country'] == country_name].iloc[-1]
+        for col in numeric_cols:
+            row_dict[col] = country_row[col]
+        for col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
+            row_dict[col] = country_row[col]
+        row_dict['Year'] = country_row['Year'] if 'Year' in country_row else 2024
+    else:
+        row_dict['Year'] = raw_df['Year'].max() if 'Year' in raw_df else 2024
+        for col in numeric_cols:
+            row_dict[col] = raw_df[col].mean()
+        for col in ['Region', 'Crop_Type', 'Adaptation_Strategies']:
+            row_dict[col] = raw_df[col].mode()[0]
 
-        else:
-            # Numeric columns: fill with mean
-            if pd.api.types.is_numeric_dtype(cleaned_df[col]):
-                input_row_template[col] = cleaned_df[col].mean()
-    result_entry = {
-        "country": country_name,
-        "lat": loc.latitude,
-        "lon": loc.longitude,
-        "results": {}
-    }
+    row_dict['Country'] = country_name
+    input_row_raw = pd.DataFrame([row_dict])
+    input_row_transformed = input_row_raw.copy()
+
+    for col, le in encoders.items():
+        if col in input_row_transformed.columns:
+            val = str(input_row_transformed[col].iloc[0])
+            input_row_transformed[col] = le.transform([val])[0] if val in le.classes_ else len(le.classes_)
+
+    cols_to_scale = [c for c in numeric_cols if c in input_row_transformed.columns]
+    if cols_to_scale:
+        input_row_transformed[cols_to_scale] = scaler.transform(input_row_transformed[cols_to_scale])
+
+    input_row_transformed = input_row_transformed[[col for col in training_data.columns if col in input_row_transformed.columns]]
+
+    result_entry = {"country": country_name, "lat": loc.latitude, "lon": loc.longitude, "results": {}}
 
     for target, info in MEMBER_TARGET_MODELS.items():
-        memberName = info['member']
-        models = info.get('models', [])
+        models = info.get("models", [])
+        if not models:
+            result_entry["results"][target] = None
+            continue
+
         model_key = models[0]
-        input_row_model = input_row_template.drop(columns=[target], errors="ignore").copy()
         try:
-            prediction, score, metric, le_target = train_and_predict(
-                df=cleaned_df,
+            input_row_model = input_row_transformed.drop(columns=[target], errors="ignore")
+            train_features = [col for col in training_data.columns if col != target]
+            input_row_model = input_row_model[train_features]
+
+            prediction, score, metric, _ = train_and_predict(
+                df=training_data,
                 target=target,
                 model_key=model_key,
                 excel_path="AI_Models_List.xlsx",
                 input_row=input_row_model,
-                memberName=memberName
-                )
+                memberName=info.get("member")
+            )
             print("Model Trained:"+model_key)
 
-        # Classification → map prediction to string
-            if target in REVERSE_MAP:
-                final_prediction = REVERSE_MAP[target].get(prediction, "Unknown")
-            else:
-                mean = raw_df[target].mean()
-                std = raw_df[target].std()
-                final_prediction = round(prediction * std + mean, 2)
-        except Exception as e:
-            print(f"Failed to train {model_key} for {country_name}: {e}")
-            final_pred = None
 
-        # target_predictions.append(final_pred)
+            pred_val = prediction[0] if hasattr(prediction, "__iter__") and not isinstance(prediction, str) else prediction
+            if target in encoders:
+                final_prediction = encoders[target].inverse_transform([int(pred_val)])[0]
+            else:
+                t_mean = raw_df[target].mean() if target in raw_df else 0
+                t_std = raw_df[target].std() if target in raw_df else 1
+                final_prediction = round(float(pred_val) * t_std + t_mean, 2)
+
+        except Exception as e:
+            print(f"Prediction error for {target} in {country_name}: {e}")
+            final_prediction = "Error"
 
         result_entry["results"][target] = final_prediction
+
     return jsonify(result_entry)
+
+
+
+
 if __name__ == "__main__":
     app.run(debug=True)

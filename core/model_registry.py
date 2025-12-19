@@ -31,7 +31,7 @@ MEMBER_TARGET_MODELS = {
         ]
     },
 
-    "Extreme_Weather_Events": {
+    "Average_Temperature_C": {
         "member": "Oumaima Issaoui",
         "task": "regression",
         "models": [
@@ -41,7 +41,7 @@ MEMBER_TARGET_MODELS = {
         ]
     },
 
-    "CO2_Emissions_MT": {
+    "Extreme_Weather_Events": {
         "member": "Nouhen Chaouch",
         "task": "regression",
         "models": [
