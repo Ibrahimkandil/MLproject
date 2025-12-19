@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card p-4 mb-4 shadow-sm border-0" style="color: black;background-color: #f8f9fa;">
+        <h2 class="text-center mb-4">🌍 Multi-Member Climate Forecast</h2>
+        <form method="POST" class="row g-3">
+            <div class="col-md-4"    style="padding-bottom: 10px; display: flex ; justify-content: flex-start; gap: 57px;">
+                <label class="small text-muted">Country</label>
+                <input type="text" name="country" class="form-control" placeholder="Enter Country Name" required>
+            </div>
+            <div class="col-md-4" style=" padding-bottom: 10px;display: flex ; justify-content: flex-start; gap: 57px;">
+                <label class="small text-muted">Target Variable</label>
+                <select name="target" id="target-select" class="form-select" required>
+                    <option value="">Select Target Variable</option>
+                    {% for col in targets %}
+                    <option value="{{ col }}" {% if result and col == request.form[target] %}selected{% endif %}>
+                    {{ col.replace('_', ' ') }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2" style=" padding-bottom: 10px;display: flex ; justify-content: flex-start; gap: 57px;">
+                <label class="small text-muted">Year</label>
+                <input type="number" name="year" class="form-control" value="2025">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100 fw-bold" onsubmit="showLoader()">Compare All</button>
+            </div>
+        </form>
+    </div>
+
+    {% if weather %}
+    <div class="alert alert-info border-0 shadow-sm text-center mb-4">
+        <strong>Current Status for {{ weather.country }}:</strong>
+        Region: <span class="badge bg-secondary">{{ weather.region }}</span> |
+        Live Temp: <span class="badge bg-danger">{{ weather.temp }}°C</span>
+    </div>
+    {% endif %}
+
+    {% if results %}
+    <div class="row row-cols-1 row-cols-md-3 g-4" style="    display: grid;grid-template-columns: repeat(3, 1fr);">
+        {% for member, val in results.items() %}
+        <div class="col">
+            <div class="card h-100 shadow-sm border-0 text-center">
+                <div class="card-header bg-dark text-white py-3">
+                    <h6 class="text-uppercase mb-0" style="letter-spacing: 1px;">{{ member }}</h6>
+                </div>
+                <div class="card-body d-flex flex-column align-items-center justify-content-center">
+                    <p class="text-muted small mb-1">Predicted Value</p>
+                    <h2 class="display-6 fw-bold text-primary">{{ val }}</h2>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center mt-5 text-muted">
+        <p>Enter a country and click "Compare All" to generate member predictions.</p>
+    </div>
+    {% endif %}
+</div>
+<script>
+    function showLoader() {
+        const loader = document.getElementById("loader");
+        const loaderText = document.getElementById("loader-text");
+
+        loader.classList.remove("hidden");
+        loaderText.innerText = "Training model... 🌱"; // Initial text
+
+        const facts = [
+            "Did you know? Crop yields have increased by 15% in the last decade.",
+            "Fact: Irrigation access impacts crop resilience significantly.",
+            "Climate impact fact: CO2 emissions correlate with temperature rise.",
+            "Interesting: Fertilizer use affects soil health index.",
+            "Did you know? Pesticide use can reduce biodiversity in farmland.",
+            "Fact: Extreme weather events have doubled in frequency over the last 20 years.",
+            "Interesting: Soil organic matter improves water retention and crop growth.",
+            "Climate fact: Global temperature rise affects the growing season length.",
+            "Did you know? Crop rotation reduces pests and increases long-term yield.",
+            "Fact: Access to modern farming technology boosts productivity significantly.",
+            "Interesting: Drought-tolerant crop varieties can sustain yields under water stress.",
+            "Climate impact fact: Rising temperatures can increase evaporation rates, affecting soil moisture.",
+            "Did you know? Proper fertilizer management reduces nutrient runoff and pollution.",
+            "Fact: Cover crops prevent soil erosion and improve soil fertility.",
+            "Interesting: Precision agriculture techniques optimize resource use and minimize waste.",
+            "Climate fact: Floods can destroy topsoil and reduce crop productivity.",
+            "Did you know? Integrated pest management reduces chemical pesticide dependency.",
+            "Fact: Urban agriculture can help mitigate local food insecurity.",
+            "Interesting: Crop diversification improves resilience against climate shocks.",
+            "Climate impact fact: Increased CO2 can stimulate plant growth but may reduce nutrient content."
+        ];
+
+
+        // Change text after a short delay to display a fact
+        setTimeout(() => {
+            loaderText.innerText =
+                "Training model... " + facts[Math.floor(Math.random() * facts.length)];
+        }, 500); // Wait 0.5 seconds before showing a fact
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Configure Member Models</h2>
+{% if message %}
+<div class="message">{{ message }}</div>
+{% endif %}
+<form method="POST">
+    <table>
+        <tr>
+            <th>Member</th>
+            <th>Crop Type</th>
+            <th>Economic Impact</th>
+            <th>Adaptation Strategies</th>
+        </tr>
+        {% for member, models in member_models.items() %}
+        <tr>
+            <td>{{ member }}</td>
+            {% for target in ["Crop_Type", "Economic_Impact_Million_USD", "Adaptation_Strategies"] %}
+            <td>
+                <select name="{{ member }}_{{ target }}" data-target="{{ target }}">
+                    <option value="">{{ models[target] }}</option>
+                    {% for model in available_per_target[target] %}
+                    <option value="{{ model }}" {% if models[target] == model %}selected{% endif %}>{{ model }}</option>
+                    {% endfor %}
+                </select>
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    <button type="submit">Save Configuration</button>
+</form>
+<style>
+    body { font-family: Arial, sans-serif; padding: 20px; background-color: #f7f7f7; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+    th { background-color: #333; color: white; }
+    select { width: 100%; padding: 5px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    .message { margin-bottom: 20px; color: green; font-weight: bold; }
+</style>
+<script>
+    function updateOptions(target) {
+        const selects = document.querySelectorAll(`select[data-target='${target}']`);
+        const usedValues = new Set();
+        selects.forEach(sel => { if(sel.value) usedValues.add(sel.value); });
+
+        selects.forEach(sel => {
+            const current = sel.value;
+            for (let i=0; i<sel.options.length; i++) {
+                const opt = sel.options[i];
+                if(opt.value === "" || opt.value === current) continue;
+                opt.disabled = usedValues.has(opt.value);
+            }
+        });
+    }
+
+    function init() {
+        ["Crop_Type", "Economic_Impact_Million_USD", "Adaptation_Strategies"].forEach(target => updateOptions(target));
+        const selects = document.querySelectorAll("select");
+        selects.forEach(sel => sel.addEventListener("change", () => updateOptions(sel.dataset.target)));
+    }
+
+    window.onload = init;
+</script>
+{% endblock %}
+

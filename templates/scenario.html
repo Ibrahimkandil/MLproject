@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>🌍 Scenario Simulation</h2>
+
+<form method="POST" class="grid-3">
+    <select name="target" required>
+        {% for t in targets %}
+        <option value="{{ t }}">{{ t.replace('_',' ') }}</option>
+        {% endfor %}
+    </select>
+
+    <input type="number" step="0.1" name="temp" placeholder="Temperature °C" required>
+    <input type="number" step="0.1" name="rain" placeholder="Rainfall mm" required>
+    <input type="number" step="0.1" name="co2" placeholder="CO₂ Emissions" required>
+
+    <button type="submit">Simulate</button>
+</form>
+
+{% if result %}
+<div class="card">
+    <h3>📈 Predicted Outcome</h3>
+    <p>{{ result }}</p>
+</div>
+{% endif %}
+
+{% endblock %}

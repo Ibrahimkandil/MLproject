@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">🤖 AI Climate Prediction Tool</h2>
+
+<form method="POST" class="card prediction-form" onsubmit="showLoader()">
+
+    <!-- STEP 1: Prediction Setup -->
+    <fieldset>
+        <legend>Step 1: Prediction Setup</legend>
+
+        <label for="targetSelect">1.1 What do you want to predict?</label>
+        <select name="target" id="targetSelect" required autofocus
+                data-members='{{ members|tojson|safe }}'>
+            <option value="">Select Target</option>
+            {% for t in targets %}
+            <option value="{{ t }}" {% if result and t == request.form.get(target) %}selected{% endif %}>{{ t.replace('_', ' ') }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="memberField">1.2 Responsible Member</label>
+        <input type="text" id="memberField" disabled value="" />
+    </fieldset>
+
+    <!-- STEP 2: Year & Country Auto-fill -->
+    <fieldset class="autofill-group">
+        <legend>Step 2: Auto-fill Context</legend>
+
+        <label for="yearSelect">2.1 Year</label>
+        <select id="yearSelect" name="Year">
+            {% for y in range(current_year, current_year-30, -1) %}
+            <option value="{{ y }}" {% if result and y|string == request.form.get(Year) %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="countrySelect">2.2 Country</label>
+        <select id="countrySelect" name="Country">
+            <option value="">Select Country</option>
+            {% for c in countries %}
+            <option value="{{ c }}" {% if result and c == request.form.get(Country) %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+        <p class="note">Selecting both will attempt to autofill other feature data.</p>
+    </fieldset>
+
+    <!-- STEP 3: Optional Feature Inputs -->
+    <fieldset>
+        <legend>Step 3: Optional Features</legend>
+        {% for col in columns %}
+        {% if col not in ['Year','Country'] and col not in targets %}
+        <label for="{{ col }}">{{ col.replace('_', ' ') }}</label>
+        <input type="text" name="{{ col }}" id="{{ col }}"
+               placeholder="{{ col.replace('_',' ') }} (Empty = Auto-fill/Mean)"
+               value="{{ request.form.get(col,'') }}" />
+        {% endif %}
+        {% endfor %}
+    </fieldset>
+
+    <button type="submit">🚀 Run Prediction</button>
+</form>
+
+<!-- LOADER -->
+<div id="loader" class="loader hidden">
+    <div class="spinner"></div>
+    <p id="loader-text">Initializing...</p>
+</div>
+
+<!-- RESULTS -->
+{% if result %}
+<div class="card result" style="color: black">
+    <h3>✅ Prediction Complete!</h3>
+    <p><b>Target:</b> {{ result.target.replace('_',' ') }}</p>
+    <p><b>Member:</b> {{ result.member }}</p>
+    <p><b>Model:</b> {{ result.model }}</p>
+    <p class="final-prediction"><b>Prediction:</b> <span>{{ result.prediction }}</span></p>
+    <p><b>{{ result.metric }}:</b> {{ result.score }}</p>
+</div>
+{% endif %}
+
+<script>
+    function showLoader() {
+        const loader = document.getElementById("loader");
+        const loaderText = document.getElementById("loader-text");
+        loader.classList.remove("hidden");
+        loaderText.innerText = "Training model... 🌱";
+
+        const facts = [
+            "Crop yields have increased by 15% in the last decade.",
+            "Extreme weather events have doubled in frequency over 20 years.",
+            "CO₂ impacts temperature and crop stress levels.",
+            "Healthy soil improves water retention.",
+            "Precision agriculture reduces resource waste.",
+            "Irrigation access boosts crop resilience.",
+            "Climate change alters growing seasons.",
+            "Diversified crops reduce climate risk.",
+            "Modern farming improves productivity.",
+            "Drought-tolerant crops sustain yields."
+        ];
+
+        setTimeout(() => {
+            loaderText.innerText = "Training model... " + facts[Math.floor(Math.random()*facts.length)];
+        }, 500);
+    }
+
+    // Populate Responsible Member
+    const targetSelect = document.getElementById("targetSelect");
+    const memberField = document.getElementById("memberField");
+    const targetMap = JSON.parse(targetSelect.dataset.members);
+
+    targetSelect.addEventListener("change", () => {
+        const t = targetSelect.value;
+        memberField.value = t && targetMap[t] ? targetMap[t].member : '';
+    });
+
+    // AUTO-FILL feature values
+    const yearSelect = document.getElementById("yearSelect");
+    const countrySelect = document.getElementById("countrySelect");
+
+    function autofillFeatures() {
+        const year = yearSelect.value;
+        const country = countrySelect.value;
+        if (!year || !country) return;
+
+        fetch(`/api/autofill?year=${year}&country=${country}`)
+            .then(resp => resp.ok ? resp.json() : {})
+            .then(data => {
+                Object.keys(data).forEach(key => {
+                    const input = document.querySelector(`[name="${key}"]`);
+                    if(input && (!input.value || input.value==="")) {
+                        input.value = data[key] != null ? (typeof data[key]==='number' ? data[key].toFixed(2) : data[key]) : "";
+                    }
+                });
+            }).catch(err => console.warn("Autofill failed", err));
+    }
+
+    yearSelect.addEventListener("change", autofillFeatures);
+    countrySelect.addEventListener("change", autofillFeatures);
+</script>
+
+<style>
+    .prediction-form label { font-weight: 600; margin-top: 10px; display:block; }
+    .prediction-form input[type="text"], .prediction-form select {
+        width:100%; padding:10px; margin-top:5px;margin-bottom:15px; border:1px solid #ccc;border-radius:4px;
+    }
+    .prediction-form button {
+        width:100%; padding:12px; font-size:1.1em; border:none; border-radius:4px; background:#3498db; color:white;
+        cursor:pointer; margin-top:20px;
+    }
+    .prediction-form button:hover { background:#2980b9; }
+    fieldset { border:1px solid #ddd; padding:15px; border-radius:4px; margin-bottom:20px; }
+    legend { font-weight:bold; font-size:1.2em; color:#34495e; padding:0 10px; }
+
+    .loader.hidden { display:none; }
+    .loader {
+        position: fixed; inset:0; background:rgba(0,0,0,0.7);
+        display:flex; justify-content:center; align-items:center; flex-direction:column; color:white; z-index:1000;
+    }
+    .spinner { width:60px;height:60px;border:8px solid #f3f3f3;border-top:8px solid #3498db;border-radius:50%;animation:spin 1.5s linear infinite;margin-bottom:15px; }
+    @keyframes spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
+
+    .card { background:white; padding:20px; border-radius:8px; box-shadow:0 4px 8px rgba(0,0,0,0.1); margin-bottom:20px; }
+    .result { border-left:5px solid #2ecc71; }
+    .final-prediction { font-size:1.5em; font-weight:bold; margin:15px 0; color:#2c3e50; }
+    .final-prediction span { color:#27ae60; background:#ecf0f1; padding:5px 10px; border-radius:4px; }
+    .note { font-size:0.9em; color:#555; margin-top:-10px; margin-bottom:10px; }
+</style>
+
+{% endblock %}

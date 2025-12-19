@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>📊 Model Performance Dashboard</h2>
+
+<form method="POST" class="form-grid">
+    <select name="target" required>
+        <option value="">Select Target</option>
+        {% for t in targets %}
+        <option value="{{ t }}">{{ t.replace('_',' ') }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Evaluate Models</button>
+</form>
+
+{% if results %}
+<div class="grid-3">
+    {% for r in results %}
+    <div class="card">
+        <h4>{{ r.member }}</h4>
+        <p><b>Model:</b> {{ r.model }}</p>
+        <p><b>{{ r.metric }}:</b> {{ r.score }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if task_type == "classification" and confusion %}
+<h3>🧮 Confusion Matrix</h3>
+<table border="1">
+    {% for row in confusion %}
+    <tr>
+        {% for cell in row %}
+        <td>{{ cell }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
+<style>
+    .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+    .card {
+        padding: 15px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+    }
+    .form-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+</style>
+{% endblock %}

@@ -1,0 +1,14 @@
+flask
+pandas
+numpy
+scikit-learn
+openpyxl
+plotly
+xgboost
+catboost
+matplotlib
+seaborn
+requests
+lightgbm
+folium
+geopy

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 class="page-title">📈 Data Insights</h2>
+
+<!-- EDA / Profiling -->
+<div class="card">
+    <h3>Data Profiling</h3>
+    <div id="profile-report">
+        {{ profile_html | safe }}
+    </div>
+</div>
+
+<!-- Crop Type Chart -->
+<div class="card">
+    <h3>Crop Type Distribution by Country</h3>
+    <div id="cropChart"></div>
+</div>
+
+<!-- Economic Impact Chart -->
+<div class="card">
+    <h3>Economic Impact Evolution Over Years</h3>
+    <div id="impactChart"></div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+    // Crop Type Chart
+    const cropChartData = JSON.parse('{{ crop_chart | safe | tojson | safe }}');
+    Plotly.newPlot("cropChart", cropChartData.data, cropChartData.layout || {});
+
+    // Economic Impact Chart
+    const impactChartData = JSON.parse('{{ impact_chart | safe | tojson | safe }}');
+    Plotly.newPlot("impactChart", impactChartData.data, impactChartData.layout || {});
+</script>
+{% endblock %}

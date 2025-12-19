@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="text-center mt-5 mb-4">📊 AI Training Dashboard</h2>
+
+    <div id="dashboard">
+        {% for target, models in grouped.items() %}
+        <div class="collapsible-container">
+            <button class="collapsible">{{ target }} ({{ models|length }} Models)</button>
+            <div class="content">
+
+                <!-- Score Comparison Chart -->
+                <div class="chart-card">
+                    <canvas id="chart-comparison-{{ loop.index }}"
+                            data-labels='{{ models|map(attribute="ModelName")|list|tojson }}'
+                            data-scores='{{ models|map(attribute="Score")|list|tojson }}'
+                            data-type='{{ models[0]["LearningType"] }}'></canvas>
+                </div>
+
+
+                <!-- Model Table -->
+                <div class="table-card" style="color: black;">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Model Name</th>
+                            <th>Score</th>
+                            <th>Prediction</th>
+                            <th>Trained On</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for m in models %}
+                        <tr>
+                            <td>{{ m["ModelName"] }}</td>
+                            <td>
+                                {% if m["LearningType"] == 'classification' %}
+                                <span class="classification">{{ "%.4f"|format(m["Score"]) }}</span>
+                                {% else %}
+                                <span class="regression">{{ "%.4f"|format(m["Score"]) }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ m.get("Prediction", "N/A") }}</td>
+                            <td>{{ m["CreatedTime"].strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+
+        // Collapsible behavior
+        document.querySelectorAll(".collapsible").forEach(btn => {
+            btn.addEventListener("click", () => {
+                btn.classList.toggle("active");
+                const content = btn.nextElementSibling;
+                content.style.maxHeight = content.style.maxHeight ? null : content.scrollHeight + "px";
+            });
+        });
+
+        // Score Comparison Charts
+        document.querySelectorAll("canvas[id^='chart-comparison']").forEach(canvas => {
+            const labels = JSON.parse(canvas.dataset.labels || "[]");
+            const scores = JSON.parse(canvas.dataset.scores || "[]");
+            const type = canvas.dataset.type || "regression";
+
+            new Chart(canvas.getContext("2d"), {
+                type: "bar",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: type === "classification" ? "Accuracy" : "RMSE",
+                        data: scores,
+                        backgroundColor: type === "classification" ? "#198754" : "#dc3545",
+                        borderRadius: 6
+                    }]
+                },
+                options: { indexAxis: "y", responsive: true, plugins: { legend: { display: false } } }
+            });
+        });
+
+        // Regression Evolution / Confusion Matrix
+        document.querySelectorAll("select[id^='model-select']").forEach(select => {
+            const idx = select.id.split("-").pop();
+            const canvasEvolution = document.getElementById("chart-evolution-" + idx);
+            const canvasConfusion = document.getElementById("chart-confusion-" + idx);
+
+            const allScores = canvasEvolution ? JSON.parse(canvasEvolution.dataset.allScores || "[]") : [];
+            const allMatrices = canvasConfusion ? JSON.parse(canvasConfusion.dataset.allMatrices || "[]") : [];
+
+            let evolutionChart = null;
+            let confusionChart = null;
+
+            function updateChart(selectedIndex) {
+                selectedIndex = parseInt(selectedIndex);
+
+                // Regression Score Evolution
+                if (canvasEvolution) {
+                    const data = allScores[selectedIndex] || [0];
+                    const labels = data.map((_, i) => i + 1);
+                    if (evolutionChart) evolutionChart.destroy();
+                    evolutionChart = new Chart(canvasEvolution.getContext("2d"), {
+                        type: "line",
+                        data: { labels, datasets: [{ label: select.options[selectedIndex].text, data, borderColor: "#007bff", tension: 0.3 }] },
+                        options: { responsive: true, plugins: { legend: { display: true } } }
+                    });
+                }
+
+                // Classification Confusion Matrix
+                if (canvasConfusion) {
+                    const matrix = allMatrices[selectedIndex] || { labels: ["None"], values: [0] };
+                    if (confusionChart) confusionChart.destroy();
+                    confusionChart = new Chart(canvasConfusion.getContext("2d"), {
+                        type: "bar",
+                        data: { labels: matrix.labels || ["None"], datasets: [{ label: "Confusion Matrix", data: matrix.values || [0], backgroundColor: "#ffc107" }] },
+                        options: { responsive: true, plugins: { legend: { display: false } } }
+                    });
+                }
+            }
+
+            updateChart(select.value);
+            select.addEventListener("change", () => updateChart(select.value));
+        });
+
+    });
+</script>
+
+<style>
+    .container { max-width: 900px; margin: 0 auto; font-family: Arial, sans-serif; }
+    .collapsible {
+        background-color: #3498db; color: white; cursor: pointer; padding: 12px 18px;
+        width: 100%; border: none; text-align: left; outline: none; font-size: 16px;
+        margin-bottom: 5px; border-radius: 5px; transition: background 0.3s;
+    }
+    .collapsible.active { background-color: #2980b9; }
+    .content {
+        background-color: #f4f4f4; max-height: 0; overflow: hidden;
+        transition: max-height 0.3s ease; border-radius: 5px; margin-bottom: 15px; padding: 0 10px;
+    }
+    .chart-card, .table-card { padding: 10px; background: white; margin-bottom: 15px; border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background-color: #e9ecef; text-transform: uppercase; font-size: 0.85rem; }
+    .classification { color: #198754; font-weight: bold; }
+    .regression { color: #dc3545; font-weight: bold; }
+</style>
+{% endblock %}

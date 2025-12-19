@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  #map { height: 600px; width: 100%; border-radius: 12px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  .controls { color:black;background: #fdfdfd; padding: 20px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+  .target-label { background: #eee; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.9em; transition: 0.2s; }
+  .target-label:hover { background: #e0e0e0; }
+  .target-label input { margin-right: 5px; }
+  #searchContainer { text-align: center; margin: 10px 0; position: relative; }
+  #countrySearch { padding: 6px 12px; width: 250px; border-radius: 6px; border: 1px solid #ccc; }
+  #countrySuggestions { position: absolute; top: 36px; left: 0; background:#fff; border:1px solid #ccc; max-height:200px; overflow-y:auto; width:250px; display:none; z-index:1000; border-radius: 6px; }
+  #countrySuggestions div { padding:5px; cursor:pointer; display:flex; align-items:center; }
+  #countrySuggestions div:hover { background:#f0f0f0; }
+  #predictionPanel { position:absolute; top:80px; right:20px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); max-width:250px; display:none; z-index:1000;}
+  #predictionPanel h5 { margin:0 0 10px 0; border-bottom:2px solid #3498db; padding-bottom:5px; }
+</style>
+
+<div class="container mt-4">
+  <h2 class="text-center fw-bold">🌍 Global Mass Predictions</h2>
+
+  <div id="searchContainer">
+    <input id="countrySearch" placeholder="Enter a country..." autocomplete="off" />
+    <div id="countrySuggestions" style="    display: block;
+    position: fixed;
+    top: 10%;
+    left: 26%;
+    color: black;"></div>
+    <button id="addCountryBtn">Predict</button>
+  </div>
+
+  <div class="controls">
+    {% for target in targets %}
+    <label class="target-label">
+      <input type="checkbox" class="targetCheck" data-target="{{ target }}" checked>
+      {{ target.replace('_', ' ') }}
+    </label>
+    {% endfor %}
+  </div>
+
+  <div id="map"></div>
+<!--  <div id="predictionPanel"></div>-->
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  // Initialize map
+  var map = L.map('map').setView([20,0],2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+
+  // Existing predictions from Flask /map
+  var predictions = {{ data | tojson }};
+  var markerList = [];
+
+  // Generate popup content
+  function getPopupHtml(item){
+    let html = `<div style="min-width:180px;"><h5 style="margin:0 0 10px 0; color:#333; border-bottom:2px solid #3498db;">${item.country}</h5>`;
+    document.querySelectorAll(".targetCheck").forEach(cb=>{
+      if(cb.checked){
+        const t = cb.dataset.target;
+        html += `<div style="margin-bottom:5px;">
+                     <small style="color:#777; font-size:10px; display:block;">${t.replace(/_/g,' ')}</small>
+                     <b style="color:#2c3e50;">${item.results[t]}</b>
+                     </div>`;
+      }
+    });
+    html += `</div>`;
+    return html;
+  }
+
+  // Add initial markers
+  predictions.forEach(p=>{
+    const m = L.marker([p.lat,p.lon]).addTo(map);
+    m.customData = p;
+    m.bindPopup(getPopupHtml(p));
+    markerList.push(m);
+  });
+
+  // Update popups when checkbox changes
+  document.querySelectorAll(".targetCheck").forEach(cb=>{
+    cb.addEventListener("change", ()=>{
+      markerList.forEach(m=>{ m.setPopupContent(getPopupHtml(m.customData)); });
+    });
+  });
+
+  // Country search autocomplete
+  const countryList = [
+    {name:"United States", code:"us"}, {name:"Canada", code:"ca"}, {name:"France", code:"fr"},
+    {name:"Germany", code:"de"}, {name:"United Kingdom", code:"gb"}, {name:"Tunisia", code:"tn"},
+    {name:"Brazil", code:"br"}, {name:"India", code:"in"}, {name:"China", code:"cn"}, {name:"Australia", code:"au"}
+  ];
+
+  const searchInput = document.getElementById("countrySearch");
+  const suggestions = document.getElementById("countrySuggestions");
+  // const predictionPanel = document.getElementById("predictionPanel");
+
+  searchInput.addEventListener("input", ()=>{
+    const query = searchInput.value.toLowerCase();
+    suggestions.innerHTML = "";
+    if(!query){ suggestions.style.display="none"; return; }
+    const matches = countryList.filter(c=>c.name.toLowerCase().includes(query));
+    matches.forEach(c=>{
+      const div = document.createElement("div");
+      div.innerHTML = `<img src="https://flagcdn.com/16x12/${c.code}.png" width="20" style="margin-right:8px;"> ${c.name}`;
+      div.addEventListener("click", ()=>{
+        searchInput.value = c.name;
+        suggestions.style.display = "none";
+      });
+      suggestions.appendChild(div);
+    });
+    suggestions.style.display = matches.length?"block":"none";
+  });
+  document.addEventListener("click", e=>{if(!searchInput.contains(e.target)) suggestions.style.display="none";});
+
+  // Add new country prediction
+  document.getElementById("addCountryBtn").addEventListener("click", ()=>{
+    const countryName = searchInput.value.trim();
+    if(!countryName) return;
+
+    fetch(`/predict_country?country=${countryName}`)
+            .then(res=>res.json())
+            .then(data=>{
+              if(!data.results){ alert("Prediction failed"); return; }
+
+              // Update panel
+              let html = `<h5>${data.country}</h5>`;
+              document.querySelectorAll(".targetCheck").forEach(cb=>{
+                if(cb.checked){
+                  const t = cb.dataset.target;
+                  html += `<div><b>${t.replace(/_/g,' ')}:</b> ${data.results[t]}</div>`;
+                }
+              });
+              // predictionPanel.innerHTML = html;
+              // predictionPanel.style.display = "block";
+
+              // Center map
+              map.setView([data.lat,data.lon],4);
+
+              // Add blue marker for new country
+              const blueIcon = L.icon({
+                iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+                iconSize: [25,41],
+                iconAnchor: [12,41],
+                popupAnchor: [1,-34],
+                shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                shadowSize: [41,41]
+              });
+
+              const newMarker = L.marker([data.lat,data.lon], {icon: blueIcon}).addTo(map);
+              newMarker.customData = data;
+              newMarker.bindPopup(getPopupHtml(data));
+              markerList.push(newMarker);
+            })
+            .catch(err=>{
+              console.error(err);
+              alert("Error fetching prediction");
+            });
+  });
+</script>
+{% endblock %}

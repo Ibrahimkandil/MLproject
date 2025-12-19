@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="hero">
+    <h1>Climate Change & Agriculture</h1>
+    <p>AI-Driven Insights for Sustainable Farming</p>
+</section>
+
+<section class="carousel">
+    {% for fact in facts %}
+    <div class="card fade">
+        <h3>📊 Year {{ fact.Year }}</h3>
+        <p><b>Country:</b> {{ fact.Country }}</p>
+        <p><b>Crop:</b> {{ fact.Crop_Type }}</p>
+        <p><b>Impact:</b> {{ fact.Economic_Impact_Million_USD }}</p>
+    </div>
+    {% endfor %}
+</section>
+
+{% endblock %}
