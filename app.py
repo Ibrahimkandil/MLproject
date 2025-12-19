@@ -71,22 +71,39 @@ REVERSE_MAP = build_reverse_mapping(raw_df, df, categorical_cols)
 def home():
     facts = raw_df.sample(5).to_dict(orient="records")
     return render_template("home.html", facts=facts)
-import json
-import plotly
-from ydata_profiling import ProfileReport
-
 def generate_eda_html(df):
-    # explorative=True adds more details but takes longer to compute
-    profile = ProfileReport(df, title="🌾 Climate Data Profiling", explorative=True)
-    # Return the HTML as a string
-    return profile.to_html()
+    html = '<div class="row">'
+    for col in df.columns:
+        html += '<div class="col-md-6 mb-4"><div class="card"><div class="card-body">'
+        html += f'<h5 class="card-title">{col}</h5>'
 
-profile_html = generate_eda_html(raw_df)
+        if pd.api.types.is_numeric_dtype(df[col]):
+            desc = df[col].describe().to_frame().round(2)
+            html += desc.to_html(classes="table table-sm table-striped")
 
+            plt.figure()
+            sns.histplot(df[col].dropna(), kde=True)
+        else:
+            counts = df[col].value_counts()
+            html += counts.to_frame().to_html(classes="table table-sm table-striped")
+
+            plt.figure()
+            counts.plot(kind="bar")
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight")
+        plt.close()
+
+        img_base64 = base64.b64encode(buf.getvalue()).decode()
+        html += f'<img src="data:image/png;base64,{img_base64}" class="img-fluid mt-2"/>'
+
+        html += '</div></div></div>'
+    html += '</div>'
+    return html
 @app.route("/visualize")
 def visualize():
-    # 1. Generate the heavy profiling report
-    # 2. Prepare Plotly Charts
+    profile_html = generate_eda_html(raw_df)
+
     crop_counts = df["Crop_Type"].value_counts()
     crop_chart = go.Figure([go.Bar(x=crop_counts.index, y=crop_counts.values)])
 
@@ -94,62 +111,12 @@ def visualize():
         go.Scatter(x=df["Year"], y=df["Economic_Impact_Million_USD"], mode="lines+markers")
     ])
 
-    # Convert Plotly figures to JSON strings
-    crop_json = json.dumps(crop_chart, cls=plotly.utils.PlotlyJSONEncoder)
-    impact_json = json.dumps(impact_chart, cls=plotly.utils.PlotlyJSONEncoder)
-
     return render_template(
         "visualize.html",
         profile_html=profile_html,
-        crop_chart=crop_json,
-        impact_chart=impact_json
+        crop_chart=json.dumps(crop_chart, cls=plotly.utils.PlotlyJSONEncoder),
+        impact_chart=json.dumps(impact_chart, cls=plotly.utils.PlotlyJSONEncoder)
     )
-# def generate_eda_html(df):
-#     html = '<div class="row">'
-#     for col in df.columns:
-#         html += '<div class="col-md-6 mb-4"><div class="card"><div class="card-body">'
-#         html += f'<h5 class="card-title">{col}</h5>'
-#
-#         if pd.api.types.is_numeric_dtype(df[col]):
-#             desc = df[col].describe().to_frame().round(2)
-#             html += desc.to_html(classes="table table-sm table-striped")
-#
-#             plt.figure()
-#             sns.histplot(df[col].dropna(), kde=True)
-#         else:
-#             counts = df[col].value_counts()
-#             html += counts.to_frame().to_html(classes="table table-sm table-striped")
-#
-#             plt.figure()
-#             counts.plot(kind="bar")
-#
-#         buf = io.BytesIO()
-#         plt.savefig(buf, format="png", bbox_inches="tight")
-#         plt.close()
-#
-#         img_base64 = base64.b64encode(buf.getvalue()).decode()
-#         html += f'<img src="data:image/png;base64,{img_base64}" class="img-fluid mt-2"/>'
-#
-#         html += '</div></div></div>'
-#     html += '</div>'
-#     return html
-# @app.route("/visualize")
-# def visualize():
-#     profile_html = generate_eda_html(raw_df)
-#
-#     crop_counts = df["Crop_Type"].value_counts()
-#     crop_chart = go.Figure([go.Bar(x=crop_counts.index, y=crop_counts.values)])
-#
-#     impact_chart = go.Figure([
-#         go.Scatter(x=df["Year"], y=df["Economic_Impact_Million_USD"], mode="lines+markers")
-#     ])
-#
-#     return render_template(
-#         "visualize.html",
-#         profile_html=profile_html,
-#         crop_chart=json.dumps(crop_chart, cls=plotly.utils.PlotlyJSONEncoder),
-#         impact_chart=json.dumps(impact_chart, cls=plotly.utils.PlotlyJSONEncoder)
-#     )
 def prepare_numeric_input(raw_df, cleaned_df, form, target):
     input_data = {}
 
