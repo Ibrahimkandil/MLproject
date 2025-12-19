@@ -20,10 +20,9 @@ geopy==2.4.1
 graphviz==0.21
 idna==3.11
 ImageHash==4.3.2
-importlib_resources==6.5.2
 itsdangerous==2.2.0
 Jinja2==3.1.6
-joblib==1.5.2
+joblib==1.5.3
 kiwisolver==1.4.9
 lightgbm==4.6.0
 llvmlite==0.45.1
@@ -31,7 +30,7 @@ MarkupSafe==3.0.3
 matplotlib==3.10.0
 minify_html==0.18.1
 multimethod==1.12
-narwhals==2.13.0
+narwhals==2.14.0
 networkx==3.6.1
 numba==0.62.1
 numpy==2.3.5
@@ -57,7 +56,6 @@ seaborn==0.13.2
 setuptools==80.9.0
 six==1.17.0
 statsmodels==0.14.6
-sweetviz==2.3.1
 threadpoolctl==3.6.0
 tqdm==4.67.1
 typeguard==4.4.4
@@ -71,3 +69,4 @@ wheel==0.45.1
 wordcloud==1.9.4
 xgboost==3.1.2
 xyzservices==2025.11.0
+
