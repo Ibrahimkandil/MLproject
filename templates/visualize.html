@@ -1,45 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<style>
-    .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .page-title { margin: 30px 0; text-align: center; color: #2c3e50; }
-
-    /* iframe styling to make it look seamless */
-    .profile-frame {
-        width: 100%;
-        height: 800px;
-        border: none;
-        border-radius: 4px;
-    }
-</style>
 
 <h2 class="page-title">📈 Data Insights</h2>
 
+<!-- EDA / Profiling -->
 <div class="card">
-    <h3>Data Profiling Report</h3>
-    <p class="text-muted">Detailed statistical analysis of the climate dataset.</p>
-    <iframe class="profile-frame" srcdoc="{{ profile_html | e }}"></iframe>
+    <h3>Data Profiling</h3>
+    <div id="profile-report">
+        {{ profile_html | safe }}
+    </div>
 </div>
 
+<!-- Crop Type Chart -->
 <div class="card">
-    <h3>Crop Type Distribution</h3>
+    <h3>Crop Type Distribution by Country</h3>
     <div id="cropChart"></div>
 </div>
 
+<!-- Economic Impact Chart -->
 <div class="card">
-    <h3>Economic Impact Evolution</h3>
+    <h3>Economic Impact Evolution Over Years</h3>
     <div id="impactChart"></div>
 </div>
 
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 <script>
-    // Note: We don't need 'tojson' here because we already json.dumps in Python
-    // We use | safe to prevent Jinja from escaping the quotes in the JSON string
-
-    const cropChartData = {{ crop_chart | safe }};
+    // Crop Type Chart
+    const cropChartData = JSON.parse('{{ crop_chart | safe | tojson | safe }}');
     Plotly.newPlot("cropChart", cropChartData.data, cropChartData.layout || {});
 
-    const impactChartData = {{ impact_chart | safe }};
+    // Economic Impact Chart
+    const impactChartData = JSON.parse('{{ impact_chart | safe | tojson | safe }}');
     Plotly.newPlot("impactChart", impactChartData.data, impactChartData.layout || {});
 </script>
 {% endblock %}
